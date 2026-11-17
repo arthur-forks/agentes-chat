@@ -18,7 +18,8 @@ export type VaultRefusalCode =
   | "source_error"
   | "no_person"
   | "not_allowed"
-  | "read_only";
+  | "read_only"
+  | "not_writable";
 
 export class VaultRefusal extends Error {
   constructor(
@@ -113,6 +114,12 @@ export const refuse = {
     new VaultRefusal(
       "read_only",
       `This ${place.name} token can only read, so nothing was saved or changed in ${vaultPlaceName(place)}. Tell the person: someone who manages that connection creates a token that can also write there and reconnects it in Settings, Vault, Connections. Until then, new logins go in the Vault (\`save_in\`: "vault").`,
+    ),
+  /** One item the connection may read but not change; other writes there still go, unlike `readOnly` (ADR 0190). */
+  notWritable: (place: VaultPlace) =>
+    new VaultRefusal(
+      "not_writable",
+      `${vaultPlaceName(place)} doesn't let this login be changed from here: it is outside what this connection may write. Nothing was changed. Tell the person to change it there, or keep the new one in the Vault (\`save_in\`: "vault").`,
     ),
   noPerson: () =>
     new VaultRefusal(

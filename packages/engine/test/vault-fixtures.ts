@@ -45,6 +45,8 @@ export interface FakeSource extends VaultSource {
   readOnly: boolean;
   /** Writes fail as a provider's own error would, with its secrets in the text. */
   writeBroken: boolean;
+  /** Refs whose change is refused for that login alone (`not_writable`, ADR 0190); other writes still go. */
+  notWritable: string[];
 }
 
 /**
@@ -77,6 +79,9 @@ export function writableSource(): FakeSource {
   source.updateLogin = async (connection, ref, change, signal) => {
     source.calls.push({ op: "update", signal, orgId: connection.orgId });
     mayWrite(connection, change.password);
+    if (source.notWritable.includes(ref)) {
+      throw new VaultSourceError("not_writable", "This login is outside what this token may change.");
+    }
     const item = source.items.find((i) => i.ref === ref);
     if (!item) throw new VaultSourceError("not_found", "It isn't there any more.");
     if (change.username !== undefined) item.username = change.username;
@@ -96,6 +101,7 @@ export function fakeSource(): FakeSource {
     calls: [],
     readOnly: false,
     writeBroken: false,
+    notWritable: [],
     describe: () => ({
       kind: "fakepass",
       name: "FakePass",

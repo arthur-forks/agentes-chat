@@ -3,6 +3,8 @@
 - Status: Accepted (built: the server, the runner, the web and the phone app)
 - Addendum, 2026-11-10: §9, logins agents save in a connected password manager (sources may write)
 - Addendum, 2026-11-11: §11, keys from a .env file, and moving an item between Personal and Team
+- Amended by ADR 0190 (2026-11-17): §3, keefast as a source through a module and the operator's private hosts; §9,
+  `not_writable`, a write refused for one item apart from a read-only credential
 - Date: 2026-11-03
 - Amends: ADR 0027 (§7: a site's password is kept in the runner's memory only, never in `store.json`; a request may
   carry a username and ask for a code; the card can save the value to the Vault), ADR 0040 and 0054 (the browser

@@ -616,7 +616,10 @@ async function assertMayReplace(db: Executor, item: ItemRow, run: VaultRun, pers
 const sharedWords = async (db: Executor, run: VaultRun) =>
   (await isPersonalWorkspace(db, run.orgId)) ? "shared in this workspace" : "the team's";
 
-/** A write into a connection's source, as a refusal the agent can act on. A refused write is remembered as read-only. */
+/**
+ * A write into a connection's source, as a refusal the agent can act on. A credential that may only read is remembered
+ * as read-only; a write refused for one item alone (`not_writable`, ADR 0190) leaves the connection as it is.
+ */
 async function sourceWrite<T>(
   deps: VaultDeps,
   connection: ConnectionRow,
@@ -630,6 +633,7 @@ async function sourceWrite<T>(
     return await sourceCall((signal) => work(opened, signal));
   } catch (error) {
     if (!(error instanceof VaultSourceError)) throw error;
+    if (error.code === "not_writable") throw refuse.notWritable(place);
     if (error.code !== "read_only") throw refuse.sourceWrite(place, error.message);
     await deps.db
       .update(vaultConnections)
@@ -796,7 +800,7 @@ export async function saveMadePassword(
     const connection = connectionOf(state, existing);
     const place = placeOf(deps.sources, connection);
     const source = connection ? sourceOf(deps.sources, connection.kind) : undefined;
-    const reason =
+    let reason =
       place.writes === "read_only"
         ? "its token can only read"
         : source?.updateLogin
@@ -808,7 +812,11 @@ export async function saveMadePassword(
         const row = await replaceInSource(deps, run, person, existing, connection, source, value);
         return { outcome: "updated", item: agentView(row, null, place) };
       } catch (error) {
-        if (asked || !(error instanceof VaultRefusal) || error.code !== "read_only") throw error;
+        // Unasked, a login the connection can't change (all of it read-only, or this one login alone) keeps its old
+        // password there and the new one comes to the Vault, as for a source that changes nothing.
+        if (asked || !(error instanceof VaultRefusal)) throw error;
+        if (error.code === "not_writable") reason = "it can't be changed from here";
+        else if (error.code !== "read_only") throw error;
       }
     } else if (asked) {
       if (place.writes === "read_only") throw refuse.readOnly(place);

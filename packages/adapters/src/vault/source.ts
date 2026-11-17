@@ -12,7 +12,8 @@
  * - `reveal` returns one value for one field of one item and keeps nothing.
  * - Every failure is a `VaultSourceError` with a code. A provider's own message is never stored or shown: it may
  *   carry a token.
- * - A write a credential may not make is `read_only`, never `auth_failed`: the connection still reads.
+ * - A write a credential may not make is `read_only`, never `auth_failed`: the connection still reads. A write the
+ *   credential may make elsewhere but not to this one item is `not_writable` (ADR 0190).
  * - `connect` validates what the person typed and returns what to keep, split into `config` (shown on screen) and
  *   `secret` (sealed at rest by the engine, never returned to a client).
  */
@@ -89,7 +90,13 @@ export type VaultSourceErrorCode =
   | "unreachable"
   | "unsupported"
   | "invalid_input"
-  | "read_only";
+  /** The credential may only read: every write through this connection is refused. */
+  | "read_only"
+  /**
+   * A write refused for this one item (it sits where the credential may read but not change), while other writes
+   * through the connection still go: unlike `read_only`, it says nothing about the credential (ADR 0190).
+   */
+  | "not_writable";
 
 /** A failure a person or an agent can act on. `message` is ours (English), never the provider's text. */
 export class VaultSourceError extends Error {
@@ -161,7 +168,8 @@ export interface VaultSource {
   createLogin?(connection: VaultConnection, login: VaultNewLogin, signal?: AbortSignal): Promise<VaultSourceItem>;
   /**
    * Changes a login the connection reads, everything else on it kept as it is, and returns it as `list` would.
-   * Absent: the source can't. Throws `VaultSourceError` (`read_only`, or `not_found` when the login is gone).
+   * Absent: the source can't. Throws `VaultSourceError` (`read_only`, `not_writable` when this login can't be changed
+   * though others can, or `not_found` when the login is gone).
    */
   updateLogin?(
     connection: VaultConnection,

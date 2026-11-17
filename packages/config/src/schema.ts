@@ -707,6 +707,21 @@ export const envVars = {
     section: "Connectors",
     secret: true,
   },
+  VAULT_KEEFAST_PRIVATE_HOSTS: {
+    schema: z
+      .string()
+      .optional()
+      .transform((value) =>
+        value
+          ?.split(",")
+          .map((entry) => entry.trim().toLowerCase().replace(/\.$/, ""))
+          .filter(Boolean),
+      ),
+    description:
+      "Comma-separated host names of keefast servers this server may reach at a private address (loopback, a private network, a tailnet), for the Vault's keefast source (ADR 0190). Set by whoever runs this server, never by a workspace's members: a keefast address a member types whose host is listed here is fetched as is, over HTTPS, though it resolves to an address the server otherwise refuses. Any other keefast address must be public. Empty: none.",
+    section: "Connectors",
+    example: "keefast.tailnet.example,localhost",
+  },
   MILLIONSEND_API_KEY: {
     schema: z.string().optional(),
     description:

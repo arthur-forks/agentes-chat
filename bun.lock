@@ -120,6 +120,7 @@
         "@agenteschat/setup": "workspace:*",
         "@agenteschat/tokens": "workspace:*",
         "@agenteschat/ui": "workspace:*",
+        "@agenteschat/vault-keefast": "workspace:*",
         "@better-auth/expo": "^1.7.7",
         "@hono/zod-openapi": "^1.6.3",
         "@scalar/hono-api-reference": "^0.12.9",
@@ -316,6 +317,19 @@
         "react-dom": "^19.2.8",
       },
     },
+    "packages/vault-keefast": {
+      "name": "@agenteschat/vault-keefast",
+      "version": "0.0.0",
+      "dependencies": {
+        "@agenteschat/adapters": "workspace:*",
+        "@agenteschat/config": "workspace:*",
+        "@agenteschat/engine": "workspace:*",
+        "@agenteschat/modules": "workspace:*",
+      },
+      "devDependencies": {
+        "@agenteschat/db": "workspace:*",
+      },
+    },
   },
   "patchedDependencies": {
     "react-native-screens@4.30.0": "patches/react-native-screens@4.30.0.patch",
@@ -354,6 +368,8 @@
     "@agenteschat/tokens": ["@agenteschat/tokens@workspace:packages/tokens"],
 
     "@agenteschat/ui": ["@agenteschat/ui@workspace:packages/ui"],
+
+    "@agenteschat/vault-keefast": ["@agenteschat/vault-keefast@workspace:packages/vault-keefast"],
 
     "@agenteschat/web": ["@agenteschat/web@workspace:apps/web"],
 

@@ -10,6 +10,7 @@
 import { loadConfig } from "@agenteschat/config";
 import { createDatabase } from "@agenteschat/db";
 import { passwordLinkByEmail } from "@agenteschat/engine";
+import { keefastVaultModule } from "@agenteschat/vault-keefast";
 import { createLogger } from "./logger";
 import { prepareDatabase, startServer } from "./start";
 import { printTelemetry } from "./telemetry";
@@ -57,4 +58,5 @@ if (process.argv[2] === "telemetry") {
   process.exit(0);
 }
 
-await startServer({ edition: "selfhost" });
+// keefast as a Vault source (ADR 0190): a module, so the core stays as upstream ships it.
+await startServer({ edition: "selfhost", modules: [keefastVaultModule()] });
