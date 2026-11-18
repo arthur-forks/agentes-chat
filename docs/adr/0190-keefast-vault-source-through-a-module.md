@@ -47,8 +47,14 @@ the address keefast usually has.
    `list`, `reveal`, `createLogin` and `updateLogin` are one request each. It reads only the item fields the port
    knows, by name, so anything else a host sends never reaches the engine. A pairing made without `--write` is
    connected read-only from the start (`config.readOnly`, ADR 0144 §9), instead of being found at the first write.
-   The `for` each request may carry is left out: the port gives a source no run, and keefast logs it only as an
-   unverified claim. Every call has the 60 s deadline of every source and stops with the engine's signal.
+   A resolve and each write carry `for`: the port's `reveal`, `createLogin` and `updateLogin` take an optional
+   `VaultSourceFor` (the agent, the person behind its run as `vaultPersonOfRun` finds them, and the run's id; no
+   person when nobody is behind it), which the engine fills from the run (`vaultSourceFor` in
+   `packages/engine/src/vault/access.ts`) and other sources ignore. The source sends the agent and the person as
+   `name (id)` and the run's id, only the parts it has, and no `for` when it has none. Never a value or anything from
+   a conversation. keefast records it in its audit log as the gateway's unverified claim (`claimed_for`), capping each
+   part and replacing control characters: it says whom a value went out for, as this server tells it, not who
+   proved it. Every call has the 60 s deadline of every source and stops with the engine's signal.
 
 3. **The ETag is used.** A sync needs the whole list (an item not in it is marked missing), so the source keeps the
    last list it read per connection, in this process's memory (metadata only, 500 connections at most, keyed by the
@@ -88,12 +94,14 @@ the address keefast usually has.
 
 ## Consequences
 
-- The core diff is small: one code in the port and the engine, one env var, one line in `main.ts`; the rest lives in
-  the module, so a fork that carries it rebases on upstream easily.
+- The core diff is small: one code and the optional `VaultSourceFor` in the port and the engine, one env var, one
+  line in `main.ts`; the rest lives in the module, so a fork that carries it rebases on upstream easily.
 - A host on the list is trusted by name. Whoever controls its DNS answer controls where the token goes, as with any
   host the operator names; it should be a name only the operator's network resolves.
 - A locked host shows as unreachable in Settings, Vault, Connections, with the unlock in the words, and the items
   already indexed stay until it is read again.
 - The kept list costs memory per connection and is lost at restart, which only means one full list.
-- Left out: the `for` claim (needs run context in the port), keys or contacts written to keefast, deleting anything,
+- keefast's audit log keeps the names and ids of the agents and people a value or a write was for, on the keefast
+  host, outside this server's own audit log.
+- Left out: keys or contacts written to keefast, deleting anything,
   telling a host apart from the tailnet's other names.

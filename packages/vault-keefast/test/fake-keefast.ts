@@ -29,8 +29,18 @@ export interface FakeRequest {
   signal: AbortSignal | undefined;
 }
 
+/** What keefast's audit log keeps of a resolve or a write: the gateway's `for`, as claimed (`claimed_for`). */
+export interface FakeAuditRecord {
+  action: "resolve" | "create_login" | "update_login";
+  /** The Entry, or "" for a new login. */
+  ref: string;
+  claimedFor: unknown;
+}
+
 export interface FakeKeefast {
   fetch: typeof fetch;
+  /** One record per resolve and write keefast answered, refused ones included. */
+  audit: FakeAuditRecord[];
   state: {
     entries: FakeEntry[];
     canWrite: boolean;
@@ -56,6 +66,9 @@ export function createFakeKeefast(entries: FakeEntry[], options: { canWrite?: bo
     leak: false,
   };
   const requests: FakeRequest[] = [];
+  const audit: FakeAuditRecord[] = [];
+  const claimed = (action: FakeAuditRecord["action"], ref: string, body: unknown) =>
+    audit.push({ action, ref, claimedFor: (body as { for?: unknown } | undefined)?.for });
   const secrets = () => `${FAKE_TOKEN} ${state.entries.map((e) => e.value).join(" ")}`;
   const refuse = (status: number, code: string) => json(status, { code, message: `refused ${code}: ${secrets()}` });
   const itemOf = (e: FakeEntry) => ({
@@ -105,11 +118,13 @@ export function createFakeKeefast(entries: FakeEntry[], options: { canWrite?: bo
     }
     const resolve = /^\/items\/([^/]+)\/resolve$/.exec(path);
     if (method === "POST" && resolve) {
+      claimed("resolve", resolve[1] ?? "", body);
       const entry = state.entries.find((e) => e.ref === resolve[1]);
       if (!entry) return refuse(404, "not_found");
       return json(200, { value: entry.value });
     }
     if (method === "POST" && path === "/logins") {
+      claimed("create_login", "", body);
       if (!state.canWrite) return refuse(403, "read_only");
       const b = body as { title?: string; username?: string; password?: string; website?: string };
       if (!b?.title || !b.password) return refuse(400, "invalid_input");
@@ -129,6 +144,7 @@ export function createFakeKeefast(entries: FakeEntry[], options: { canWrite?: bo
     }
     const change = /^\/logins\/([^/]+)$/.exec(path);
     if (method === "PATCH" && change) {
+      claimed("update_login", change[1] ?? "", body);
       if (!state.canWrite) return refuse(403, "read_only");
       const entry = state.entries.find((e) => e.ref === change[1]);
       if (entry?.kind !== "login") return refuse(404, "not_found");
@@ -141,5 +157,5 @@ export function createFakeKeefast(entries: FakeEntry[], options: { canWrite?: bo
     }
     return refuse(404, "not_found");
   };
-  return { fetch: handler as typeof fetch, state, requests };
+  return { fetch: handler as typeof fetch, state, requests, audit };
 }

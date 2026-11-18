@@ -9,6 +9,7 @@ import {
   type VaultSecretField,
   type VaultSource,
   VaultSourceError,
+  type VaultSourceFor,
   type VaultSources,
 } from "@agenteschat/adapters";
 import { openSecret, sealSecret } from "../crypto";
@@ -128,12 +129,13 @@ export function sourceOf(sources: VaultSources, kind: unknown): VaultSource | un
 /**
  * A login's password or a key's value, read now: a built-in item's opened, an external one's asked of its source.
  * Null when there is none. A source's failure throws its `VaultSourceError`; a source no longer installed throws one
- * too (`unsupported`).
+ * too (`unsupported`). `forWhom`: whom it is read for, passed to the source.
  */
 export async function readItemValue(
   deps: Pick<VaultDeps, "keyWrappers" | "sources">,
   item: ItemRow,
   connection: ConnectionRow | undefined,
+  forWhom?: VaultSourceFor,
 ): Promise<string | null> {
   if (!item.connectionId) return openItemValue(deps, item);
   const source = connection ? sourceOf(deps.sources, connection.kind) : undefined;
@@ -145,7 +147,7 @@ export async function readItemValue(
   const opened = await sourceConnection(deps, connection).catch(() => {
     throw new VaultSourceError("auth_failed", "Connect this password manager again.");
   });
-  const value = await sourceCall((signal) => source.reveal(opened, ref, field, signal));
+  const value = await sourceCall((signal) => source.reveal(opened, ref, field, signal, forWhom));
   return value === "" ? null : value;
 }
 

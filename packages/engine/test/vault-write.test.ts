@@ -5,6 +5,7 @@ import {
   createVaultItem,
   listUsableVault,
   listVaultPlaces,
+  releaseVaultLogin,
   restoreMadePassword,
   saveMadePassword,
   saveVaultItemByAgent,
@@ -18,6 +19,7 @@ import {
 import {
   everythingStored,
   type FakeSource,
+  routineRun,
   runAskedBy,
   SOURCE_PASSWORD,
   SOURCE_TOKEN,
@@ -180,6 +182,36 @@ describe("a login an agent makes", () => {
     const stored = await everythingStored(v);
     expect(stored).not.toContain(MADE);
     expect(stored).not.toContain(MADE_AGAIN);
+  });
+
+  test("each call into the password manager says whom it is for: the agent, the person behind the run, the run", async () => {
+    const { v, source } = await setup();
+    await connect(v);
+    const run = await runAskedBy(v, v.dev.id, v.carla.id);
+    const first = await made(v, run);
+    await made(v, run, MADE_AGAIN);
+    await releaseVaultLogin(v.deps, run, first.item.id, SITE);
+    const forCarla = {
+      agent: { id: v.dev.id, name: "Dev" },
+      person: { id: v.carla.id, name: "carla" },
+      runId: run.runId,
+    };
+    // The new login, what it held before the change (kept for undo), the change, then the password typed.
+    expect(source.calls.filter((c) => c.op !== "list" && c.op !== "connect").map((c) => [c.op, c.forWhom])).toEqual([
+      ["create", forCarla],
+      ["reveal", forCarla],
+      ["update", forCarla],
+      ["reveal", forCarla],
+    ]);
+
+    // A routine nobody set up has no person behind it: no person is named.
+    const routine = await routineRun(v, v.dev.id, null);
+    await saveMadePassword(v.deps, routine, { website: "https://other.acme.example", username: null }, MADE);
+    expect(source.calls.at(-1)).toMatchObject({
+      op: "create",
+      forWhom: { agent: { id: v.dev.id, name: "Dev" }, runId: routine.runId },
+    });
+    expect(source.calls.at(-1)?.forWhom).not.toHaveProperty("person");
   });
 
   test("the place the person named wins; more than one manager, or none, means the Vault", async () => {

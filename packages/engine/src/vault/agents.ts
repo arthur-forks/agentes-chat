@@ -12,6 +12,7 @@ import {
   SECRET_NAME,
   VAULT_READ_ONLY_CONFIG,
   VaultSourceError,
+  type VaultSourceFor,
   vaultOrigin,
   vaultRule,
   vaultRuleLabel,
@@ -34,6 +35,7 @@ import {
   sharedWithAgent,
   type VaultRunPerson,
   vaultPersonOfRun,
+  vaultSourceFor,
 } from "./access";
 import { assertRoom, cleanContact, cleanKeyName, cleanText, cleanWebsite, connectionRow } from "./items";
 import { named, refuse, VaultRefusal, vaultItemName, vaultPlaceName } from "./refusals";
@@ -251,11 +253,19 @@ async function itemForRun(deps: VaultDeps, run: VaultRun, person: VaultRunPerson
   return { item, connection, source };
 }
 
-/** A login's or key's value now, or the refusal that says why not. */
-async function valueForRun(deps: VaultDeps, item: ItemRow, connection: ConnectionRow | undefined, source: string) {
+/** A login's or key's value now, or the refusal that says why not. A password manager is told whom it is for. */
+async function valueForRun(
+  deps: VaultDeps,
+  run: VaultRun,
+  person: VaultRunPerson,
+  item: ItemRow,
+  connection: ConnectionRow | undefined,
+  source: string,
+) {
   let value: string | null;
   try {
-    value = await readItemValue(deps, item, connection);
+    const forWhom = item.connectionId ? await vaultSourceFor(deps.db, run, person) : undefined;
+    value = await readItemValue(deps, item, connection, forWhom);
   } catch (error) {
     if (error instanceof VaultSourceError) throw refuse.sourceError(source, error.message);
     if (error instanceof SealedValueError) throw refuse.noValue(item);
@@ -342,7 +352,7 @@ export async function releaseVaultLogin(
   if (!rule) throw refuse.noWebsite();
   if (pageOrigin && !vaultRuleMatches(rule, pageOrigin))
     throw refuse.wrongSite(vaultRuleLabel(rule), hostOf(pageOrigin));
-  const password = await valueForRun(deps, item, connection, source);
+  const password = await valueForRun(deps, run, person, item, connection, source);
   return { item: agentView(item, null, placeOf(deps.sources, connection)), password, rule };
 }
 
@@ -416,7 +426,7 @@ export async function releaseVaultKeys(
     }
     const connection = connectionOf(state, item);
     const source = connection ? sourceNameOf(deps.sources, connection.kind) : "the Vault";
-    out.push({ name, value: await valueForRun(deps, item, connection, source), itemId: item.id });
+    out.push({ name, value: await valueForRun(deps, run, person, item, connection, source), itemId: item.id });
   }
   return out;
 }
@@ -481,8 +491,9 @@ export async function saveVaultItemByAgent(
     const place = placeOf(deps.sources, connection);
     if (place.writes === "read_only") throw refuse.readOnly(place);
     const username = await asRefusal(() => cleanText(change.username, VAULT_LIMITS.username, "username"));
+    const forWhom = await vaultSourceFor(db, run, person);
     const listed = await sourceWrite(deps, connection, (opened, signal) =>
-      update.call(external, opened, ref, { username }, signal),
+      update.call(external, opened, ref, { username }, signal, forWhom),
     );
     const row = await db.transaction(async (tx) => {
       const kept = await indexSourceItem(tx, connection, listed, vaultNow(deps));
@@ -875,6 +886,7 @@ async function createInSource(
   const create = source?.createLogin;
   if (!source || !create) throw refuse.notAllowed("That password manager doesn't take new logins from here.");
   await asRefusal(() => assertRoom(deps.db, run.orgId));
+  const forWhom = await vaultSourceFor(deps.db, run, person);
   const listed = await sourceWrite(deps, connection, (opened, signal) =>
     create.call(
       source,
@@ -886,6 +898,7 @@ async function createInSource(
         ...(fields.website ? { website: fields.website, match: "site" as const } : {}),
       },
       signal,
+      forWhom,
     ),
   );
   const row = await deps.db.transaction(async (tx) => {
@@ -918,16 +931,24 @@ async function replaceInSource(
   const ref = item.externalRef;
   if (!update || !ref) throw refuse.notAllowed(`${named(item)} can't be changed from here.`);
   const version = item.secretVersion + 1;
-  const kept = previous ?? keptBehind([...item.previousSecrets, ...(await behindOf(deps, item, connection, version))]);
+  const forWhom = await vaultSourceFor(deps.db, run, person);
+  const kept =
+    previous ?? keptBehind([...item.previousSecrets, ...(await behindOf(deps, item, connection, version, forWhom))]);
   await sourceWrite(deps, connection, (opened, signal) =>
-    update.call(source, opened, ref, { password: value }, signal),
+    update.call(source, opened, ref, { password: value }, signal, forWhom),
   );
   return replaceValue(deps, run, person, item, { secretVersion: version }, kept, { source: connection.kind });
 }
 
 /** What a login in a password manager holds now, sealed as `version` to go behind its row; nothing when unreadable. */
-async function behindOf(deps: VaultDeps, item: ItemRow, connection: ConnectionRow, version: number) {
-  const now = await readItemValue(deps, item, connection).catch(() => null);
+async function behindOf(
+  deps: VaultDeps,
+  item: ItemRow,
+  connection: ConnectionRow,
+  version: number,
+  forWhom: VaultSourceFor,
+) {
+  const now = await readItemValue(deps, item, connection, forWhom).catch(() => null);
   return now ? [await sealItemValue(deps, item, version, now)] : [];
 }
 
@@ -984,7 +1005,9 @@ export async function restoreMadePassword(
   if (value === null) throw refuse.noValue(item);
   const source = connection ? sourceOf(deps.sources, connection.kind) : undefined;
   if (connection && source) {
-    const behind = discard ? [] : await behindOf(deps, item, connection, item.secretVersion + 1);
+    const behind = discard
+      ? []
+      : await behindOf(deps, item, connection, item.secretVersion + 1, await vaultSourceFor(deps.db, run, person));
     const kept = [...behind, ...item.previousSecrets.slice(0, -1)];
     const row = await replaceInSource(deps, run, person, item, connection, source, value, kept);
     return { outcome: "updated", item: agentView(row, null, placeOf(deps.sources, connection)), kept: kept.length };

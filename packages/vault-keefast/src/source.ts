@@ -21,6 +21,9 @@
  *   to a loopback, private or tailnet address and is fetched with plain `fetch`, still over HTTPS only. A redirect is
  *   never followed, from either.
  * - Every call has a deadline (60 s, as the engine's own) and stops when the engine's signal aborts.
+ * - A resolve and each write carry `for` with whom the engine asks for (`VaultSourceFor`): the agent and the person
+ *   as `name (id)`, and the run's id, only the parts it knows, and no `for` when it knows none. keefast logs it as the
+ *   gateway's unverified claim (`claimed_for`), capping each part and replacing control characters (ADR 0190).
  */
 import {
   OutboundAddressError,
@@ -36,6 +39,7 @@ import {
   type VaultSourceDescriptor,
   VaultSourceError,
   type VaultSourceErrorCode,
+  type VaultSourceFor,
   type VaultSourceItem,
   vaultOrigin,
 } from "@agenteschat/adapters";
@@ -70,6 +74,8 @@ const MAX_LIST_BYTES = 32 * 1024 * 1024;
 const MAX_KEPT_LISTS = 500;
 const MAX_TITLE = 512;
 const MAX_LABEL = 200;
+/** keefast keeps 256 characters of each part of `for`; a name is cut first so the id after it stays. */
+const MAX_CLAIM_NAME = 200;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY_NAME = /^[A-Z][A-Z0-9_]*$/;
 
@@ -149,6 +155,24 @@ function openConnection(connection: VaultConnection): Opened {
   if (!base || !token) throw fail("invalid_input", MESSAGES.connection);
   return { base, token, fingerprint: fingerprintOf(base, token) };
 }
+
+/** `for` as keefast's API takes it, or nothing when the engine knows nobody. */
+function claimOf(forWhom: VaultSourceFor | undefined): Record<string, string> | undefined {
+  const named = (who: { id: string; name: string } | undefined) => {
+    if (!who?.id) return undefined;
+    const name = who.name.trim().slice(0, MAX_CLAIM_NAME);
+    return name ? `${name} (${who.id})` : who.id;
+  };
+  const parts = { agent: named(forWhom?.agent), person: named(forWhom?.person), run: forWhom?.runId || undefined };
+  const claim = Object.fromEntries(Object.entries(parts).filter(([, value]) => value)) as Record<string, string>;
+  return Object.keys(claim).length > 0 ? claim : undefined;
+}
+
+/** A request body with `for`, when there is one. */
+const withClaim = (body: Record<string, unknown>, forWhom: VaultSourceFor | undefined) => {
+  const claim = claimOf(forWhom);
+  return claim ? { ...body, for: claim } : body;
+};
 
 // ---- What keefast answers ------------------------------------------------------------------------------------
 
@@ -434,12 +458,12 @@ export function createKeefastSource(options: KeefastSourceOptions = {}): VaultSo
       return items.map((item) => structuredClone(item));
     },
 
-    async reveal(connection, ref, field: VaultSecretField, signal) {
+    async reveal(connection, ref, field: VaultSecretField, signal, forWhom) {
       const opened = openConnection(connection);
       if (!UUID.test(ref)) throw fail("not_found", MESSAGES.notFound);
       const host = opened.base.host;
       const answer = await send(opened, "POST", `/items/${encodeURIComponent(ref.toLowerCase())}/resolve`, {
-        body: { field },
+        body: withClaim({ field }, forWhom),
         signal,
       });
       if (answer.status !== 200) throw refusalOf(host, answer, fail("not_found", MESSAGES.notFound));
@@ -449,7 +473,7 @@ export function createKeefastSource(options: KeefastSourceOptions = {}): VaultSo
       return value;
     },
 
-    async createLogin(connection, login: VaultNewLogin, signal) {
+    async createLogin(connection, login: VaultNewLogin, signal, forWhom) {
       const opened = openConnection(connection);
       // keefast matches every website exactly, so `match` has nothing to say there.
       const body: Record<string, unknown> = {
@@ -459,17 +483,18 @@ export function createKeefastSource(options: KeefastSourceOptions = {}): VaultSo
         ...(login.website ? { website: login.website } : {}),
         ...(login.notes ? { notes: login.notes } : {}),
       };
-      return itemCall(opened, "POST", "/logins", body, 201, signal);
+      return itemCall(opened, "POST", "/logins", withClaim(body, forWhom), 201, signal);
     },
 
-    async updateLogin(connection, ref, change: VaultLoginChange, signal) {
+    async updateLogin(connection, ref, change: VaultLoginChange, signal, forWhom) {
       const opened = openConnection(connection);
       if (!UUID.test(ref)) throw fail("not_found", MESSAGES.notFound);
       const body: Record<string, unknown> = {
         ...(change.username !== undefined ? { username: change.username } : {}),
         ...(change.password !== undefined ? { password: change.password } : {}),
       };
-      return itemCall(opened, "PATCH", `/logins/${encodeURIComponent(ref.toLowerCase())}`, body, 200, signal);
+      const path = `/logins/${encodeURIComponent(ref.toLowerCase())}`;
+      return itemCall(opened, "PATCH", path, withClaim(body, forWhom), 200, signal);
     },
   };
 }

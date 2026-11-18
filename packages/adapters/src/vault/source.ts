@@ -123,6 +123,18 @@ export interface VaultSourceContext {
   orgId: string;
 }
 
+/**
+ * Whom a value or a write is for, as the engine knows it (ADR 0190): the agent, the person behind its run (who asked,
+ * else the creator of the routine behind it; absent when nobody is), and the run. Names are the ones people see in
+ * the workspace, each with its id. Never a secret and nothing anyone wrote in a conversation. A source may pass it
+ * on to its own audit log as the caller's claim, or ignore it.
+ */
+export interface VaultSourceFor {
+  agent?: { id: string; name: string };
+  person?: { id: string; name: string };
+  runId?: string;
+}
+
 /** A login for a source to keep. `website` is an HTTPS origin. */
 export interface VaultNewLogin {
   title: string;
@@ -159,13 +171,27 @@ export interface VaultSource {
   ): Promise<VaultConnectResult>;
   /** Every item the connection reads, metadata only. Throws `VaultSourceError`. */
   list(connection: VaultConnection, signal?: AbortSignal): Promise<VaultSourceItem[]>;
-  /** One value, read now and kept nowhere. Throws `VaultSourceError` (`not_found` when the item or field is gone). */
-  reveal(connection: VaultConnection, ref: string, field: VaultSecretField, signal?: AbortSignal): Promise<string>;
+  /**
+   * One value, read now and kept nowhere. Throws `VaultSourceError` (`not_found` when the item or field is gone).
+   * `forWhom`, here and on the writes: whom the engine asks for, when it knows (`VaultSourceFor`).
+   */
+  reveal(
+    connection: VaultConnection,
+    ref: string,
+    field: VaultSecretField,
+    signal?: AbortSignal,
+    forWhom?: VaultSourceFor,
+  ): Promise<string>;
   /**
    * Keeps a new login where the connection reads from, and returns it as `list` would (never its password). Absent:
    * the source can't. Throws `VaultSourceError` (`read_only` when the credential may only read).
    */
-  createLogin?(connection: VaultConnection, login: VaultNewLogin, signal?: AbortSignal): Promise<VaultSourceItem>;
+  createLogin?(
+    connection: VaultConnection,
+    login: VaultNewLogin,
+    signal?: AbortSignal,
+    forWhom?: VaultSourceFor,
+  ): Promise<VaultSourceItem>;
   /**
    * Changes a login the connection reads, everything else on it kept as it is, and returns it as `list` would.
    * Absent: the source can't. Throws `VaultSourceError` (`read_only`, `not_writable` when this login can't be changed
@@ -176,6 +202,7 @@ export interface VaultSource {
     ref: string,
     change: VaultLoginChange,
     signal?: AbortSignal,
+    forWhom?: VaultSourceFor,
   ): Promise<VaultSourceItem>;
 }
 

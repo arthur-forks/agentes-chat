@@ -333,6 +333,43 @@ describe("writes", () => {
     expect(writes.every((r) => r.headers["content-type"] === "application/json")).toBe(true);
   });
 
+  test("a resolve and each write say whom they are for, only the parts known, and nothing when none is", async () => {
+    const { fake, source } = setup();
+    const connection = await connected(source);
+    const agent = { id: "agent-1", name: "Dev" };
+    const person = { id: "user-1", name: "Ana Souza" };
+    await source.reveal(connection, LOGIN_REF, "password", undefined, { agent, person, runId: "run-1" });
+    const created = await source.createLogin?.(connection, { title: "x", password: "fake-p-NEVER-SHOWN" }, undefined, {
+      agent,
+      runId: "run-2",
+    });
+    await source.updateLogin?.(connection, LOGIN_REF, { username: "ops" }, undefined, {
+      agent: { ...agent, name: " " },
+    });
+    await source.reveal(connection, KEY_REF, "key", undefined, {});
+    await source.reveal(connection, KEY_REF, "key");
+    await source.updateLogin?.(connection, LOGIN_REF, { username: "ana" }, undefined, {
+      person: { id: "user-1", name: "x".repeat(300) },
+    });
+    expect(fake.audit).toEqual([
+      {
+        action: "resolve",
+        ref: LOGIN_REF,
+        claimedFor: { agent: "Dev (agent-1)", person: "Ana Souza (user-1)", run: "run-1" },
+      },
+      { action: "create_login", ref: "", claimedFor: { agent: "Dev (agent-1)", run: "run-2" } },
+      { action: "update_login", ref: LOGIN_REF, claimedFor: { agent: "agent-1" } },
+      { action: "resolve", ref: KEY_REF, claimedFor: undefined },
+      { action: "resolve", ref: KEY_REF, claimedFor: undefined },
+      // keefast keeps 256 characters of each part: a long name is cut so the id still fits.
+      { action: "update_login", ref: LOGIN_REF, claimedFor: { person: `${"x".repeat(200)} (user-1)` } },
+    ]);
+    expect(created?.kind).toBe("login");
+    // No `for` at all when nothing is known, not an empty one.
+    const bodies = fake.requests.filter((r) => r.method !== "GET").map((r) => r.body as Record<string, unknown>);
+    expect(bodies.filter((b) => "for" in b)).toHaveLength(4);
+  });
+
   test("a pairing without --write is read_only from connect on; a login outside its subgroup is not_writable", async () => {
     const readOnly = setup({ canWrite: false });
     const result = await readOnly.source.connect(INPUT);

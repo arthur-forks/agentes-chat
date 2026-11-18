@@ -15,6 +15,7 @@
  * - Personal: that person is its owner.
  * - Team: that person is in its audience, or nobody is behind the run and it is shared with everyone.
  */
+import type { VaultSourceFor } from "@agenteschat/adapters";
 import { and, type Executor, eq, inArray, isNull, schema } from "@agenteschat/db";
 import { runAuthorityById, UUID } from "../authority";
 import { ValidationError } from "../errors";
@@ -23,7 +24,7 @@ import { routineCreatorOf } from "../requester";
 import { rightHandAwayRun } from "../right-hand";
 import { VAULT_LIMITS, type VaultAccess, type VaultRun, type VaultScope } from "./service";
 
-const { agents, orgRoles, organizationMembers } = schema;
+const { agents, orgRoles, organizationMembers, users } = schema;
 
 export type ItemRow = typeof schema.vaultItems.$inferSelect;
 export type ConnectionRow = typeof schema.vaultConnections.$inferSelect;
@@ -127,6 +128,25 @@ export async function vaultPersonOfRun(db: Executor, run: VaultRun): Promise<Vau
     roleIds: membership.roleIds,
     manages: can(membership, "manage_credentials"),
     routineId,
+  };
+}
+
+/**
+ * Whom a run asks a password manager for (`VaultSourceFor`, ADR 0190): the agent and the person `vaultPersonOfRun`
+ * found, by the names people see, and the run. Nobody behind the run: no person.
+ */
+export async function vaultSourceFor(db: Executor, run: VaultRun, person: VaultRunPerson): Promise<VaultSourceFor> {
+  const [agent] = await db
+    .select({ name: agents.name })
+    .from(agents)
+    .where(and(eq(agents.orgId, run.orgId), eq(agents.id, run.agentId)));
+  const [user] = person.personId
+    ? await db.select({ name: users.name }).from(users).where(eq(users.id, person.personId))
+    : [];
+  return {
+    ...(agent ? { agent: { id: run.agentId, name: agent.name } } : {}),
+    ...(person.personId && user ? { person: { id: person.personId, name: user.name } } : {}),
+    runId: run.runId,
   };
 }
 

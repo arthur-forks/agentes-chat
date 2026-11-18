@@ -4,6 +4,7 @@ import {
   type VaultConnection as SourceConnection,
   type VaultSource,
   VaultSourceError,
+  type VaultSourceFor,
   type VaultSourceItem,
 } from "@agenteschat/adapters";
 import { eq, schema } from "@agenteschat/db";
@@ -40,6 +41,8 @@ export interface FakeSource extends VaultSource {
     op: "connect" | "list" | "reveal" | "create" | "update";
     signal: AbortSignal | undefined;
     orgId: string | undefined;
+    /** Whom the engine said a `reveal` or a write is for (ADR 0190). */
+    forWhom?: VaultSourceFor | undefined;
   }[];
   /** Writes are refused as a token that only reads would be (a source made with `writableSource`). */
   readOnly: boolean;
@@ -62,8 +65,8 @@ export function writableSource(): FakeSource {
     }
     if (source.writeBroken) throw new Error(`boom ${connection.secret.token} ${password}`);
   };
-  source.createLogin = async (connection, login, signal) => {
-    source.calls.push({ op: "create", signal, orgId: connection.orgId });
+  source.createLogin = async (connection, login, signal, forWhom) => {
+    source.calls.push({ op: "create", signal, orgId: connection.orgId, forWhom });
     mayWrite(connection, login.password);
     const item: VaultSourceItem = {
       ref: `made-${source.items.length + 1}`,
@@ -76,8 +79,8 @@ export function writableSource(): FakeSource {
     source.values.set(item.ref, login.password);
     return { ...item };
   };
-  source.updateLogin = async (connection, ref, change, signal) => {
-    source.calls.push({ op: "update", signal, orgId: connection.orgId });
+  source.updateLogin = async (connection, ref, change, signal, forWhom) => {
+    source.calls.push({ op: "update", signal, orgId: connection.orgId, forWhom });
     mayWrite(connection, change.password);
     if (source.notWritable.includes(ref)) {
       throw new VaultSourceError("not_writable", "This login is outside what this token may change.");
@@ -120,8 +123,8 @@ export function fakeSource(): FakeSource {
       if (source.listError) throw source.listError;
       return source.items.map((item) => ({ ...item }));
     },
-    reveal: async (connection: SourceConnection, ref, _field, signal) => {
-      source.calls.push({ op: "reveal", signal, orgId: connection.orgId });
+    reveal: async (connection: SourceConnection, ref, _field, signal, forWhom) => {
+      source.calls.push({ op: "reveal", signal, orgId: connection.orgId, forWhom });
       source.seenTokens.push(connection.secret.token ?? "");
       const value = source.values.get(ref);
       if (value === undefined) throw new VaultSourceError("not_found", "It isn't there any more.");
