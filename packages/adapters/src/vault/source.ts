@@ -12,7 +12,8 @@
  * - `reveal` returns one value for one field of one item and keeps nothing.
  * - Every failure is a `VaultSourceError` with a code. A provider's own message is never stored or shown: it may
  *   carry a token.
- * - A write a credential may not make is `read_only`, never `auth_failed`: the connection still reads.
+ * - A write a credential may not make is `read_only`, never `auth_failed`: the connection still reads. A write the
+ *   credential may make elsewhere but not to this one item is `not_writable` (ADR 0195).
  * - `connect` validates what the person typed and returns what to keep, split into `config` (shown on screen) and
  *   `secret` (sealed at rest by the engine, never returned to a client).
  */
@@ -89,7 +90,13 @@ export type VaultSourceErrorCode =
   | "unreachable"
   | "unsupported"
   | "invalid_input"
-  | "read_only";
+  /** The credential may only read: every write through this connection is refused. */
+  | "read_only"
+  /**
+   * A write refused for this one item (it sits where the credential may read but not change), while other writes
+   * through the connection still go: unlike `read_only`, it says nothing about the credential (ADR 0195).
+   */
+  | "not_writable";
 
 /** A failure a person or an agent can act on. `message` is ours (English), never the provider's text. */
 export class VaultSourceError extends Error {
@@ -114,6 +121,18 @@ export interface VaultConnectResult {
 /** Who a call into a source is for: the workspace connecting it (a source shares heavy work fairly by it). */
 export interface VaultSourceContext {
   orgId: string;
+}
+
+/**
+ * Whom a value or a write is for, as the engine knows it (ADR 0195): the agent, the person behind its run (who asked,
+ * else the creator of the routine behind it; absent when nobody is), and the run. Names are the ones people see in
+ * the workspace, each with its id. Never a secret and nothing anyone wrote in a conversation. A source may pass it
+ * on to its own audit log as the caller's claim, or ignore it.
+ */
+export interface VaultSourceFor {
+  agent?: { id: string; name: string };
+  person?: { id: string; name: string };
+  runId?: string;
 }
 
 /** A login for a source to keep. `website` is an HTTPS origin. */
@@ -152,22 +171,38 @@ export interface VaultSource {
   ): Promise<VaultConnectResult>;
   /** Every item the connection reads, metadata only. Throws `VaultSourceError`. */
   list(connection: VaultConnection, signal?: AbortSignal): Promise<VaultSourceItem[]>;
-  /** One value, read now and kept nowhere. Throws `VaultSourceError` (`not_found` when the item or field is gone). */
-  reveal(connection: VaultConnection, ref: string, field: VaultSecretField, signal?: AbortSignal): Promise<string>;
+  /**
+   * One value, read now and kept nowhere. Throws `VaultSourceError` (`not_found` when the item or field is gone).
+   * `forWhom`, here and on the writes: whom the engine asks for, when it knows (`VaultSourceFor`).
+   */
+  reveal(
+    connection: VaultConnection,
+    ref: string,
+    field: VaultSecretField,
+    signal?: AbortSignal,
+    forWhom?: VaultSourceFor,
+  ): Promise<string>;
   /**
    * Keeps a new login where the connection reads from, and returns it as `list` would (never its password). Absent:
    * the source can't. Throws `VaultSourceError` (`read_only` when the credential may only read).
    */
-  createLogin?(connection: VaultConnection, login: VaultNewLogin, signal?: AbortSignal): Promise<VaultSourceItem>;
+  createLogin?(
+    connection: VaultConnection,
+    login: VaultNewLogin,
+    signal?: AbortSignal,
+    forWhom?: VaultSourceFor,
+  ): Promise<VaultSourceItem>;
   /**
    * Changes a login the connection reads, everything else on it kept as it is, and returns it as `list` would.
-   * Absent: the source can't. Throws `VaultSourceError` (`read_only`, or `not_found` when the login is gone).
+   * Absent: the source can't. Throws `VaultSourceError` (`read_only`, `not_writable` when this login can't be changed
+   * though others can, or `not_found` when the login is gone).
    */
   updateLogin?(
     connection: VaultConnection,
     ref: string,
     change: VaultLoginChange,
     signal?: AbortSignal,
+    forWhom?: VaultSourceFor,
   ): Promise<VaultSourceItem>;
 }
 

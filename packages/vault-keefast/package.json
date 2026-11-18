@@ -1,0 +1,24 @@
+{
+  "name": "@agenteschat/vault-keefast",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agenteschat/adapters": "workspace:*",
+    "@agenteschat/config": "workspace:*",
+    "@agenteschat/engine": "workspace:*",
+    "@agenteschat/modules": "workspace:*"
+  },
+  "devDependencies": {
+    "@agenteschat/db": "workspace:*"
+  },
+  "license": "AGPL-3.0-only"
+}

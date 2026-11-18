@@ -5,6 +5,7 @@ import {
   createVaultItem,
   listUsableVault,
   listVaultPlaces,
+  releaseVaultLogin,
   restoreMadePassword,
   saveMadePassword,
   saveVaultItemByAgent,
@@ -18,6 +19,7 @@ import {
 import {
   everythingStored,
   type FakeSource,
+  routineRun,
   runAskedBy,
   SOURCE_PASSWORD,
   SOURCE_TOKEN,
@@ -182,6 +184,36 @@ describe("a login an agent makes", () => {
     expect(stored).not.toContain(MADE_AGAIN);
   });
 
+  test("each call into the password manager says whom it is for: the agent, the person behind the run, the run", async () => {
+    const { v, source } = await setup();
+    await connect(v);
+    const run = await runAskedBy(v, v.dev.id, v.carla.id);
+    const first = await made(v, run);
+    await made(v, run, MADE_AGAIN);
+    await releaseVaultLogin(v.deps, run, first.item.id, SITE);
+    const forCarla = {
+      agent: { id: v.dev.id, name: "Dev" },
+      person: { id: v.carla.id, name: "carla" },
+      runId: run.runId,
+    };
+    // The new login, what it held before the change (kept for undo), the change, then the password typed.
+    expect(source.calls.filter((c) => c.op !== "list" && c.op !== "connect").map((c) => [c.op, c.forWhom])).toEqual([
+      ["create", forCarla],
+      ["reveal", forCarla],
+      ["update", forCarla],
+      ["reveal", forCarla],
+    ]);
+
+    // A routine nobody set up has no person behind it: no person is named.
+    const routine = await routineRun(v, v.dev.id, null);
+    await saveMadePassword(v.deps, routine, { website: "https://other.acme.example", username: null }, MADE);
+    expect(source.calls.at(-1)).toMatchObject({
+      op: "create",
+      forWhom: { agent: { id: v.dev.id, name: "Dev" }, runId: routine.runId },
+    });
+    expect(source.calls.at(-1)?.forWhom).not.toHaveProperty("person");
+  });
+
   test("the place the person named wins; more than one manager, or none, means the Vault", async () => {
     const { v, source } = await setup();
     const run = await runAskedBy(v, v.dev.id, v.carla.id);
@@ -320,6 +352,69 @@ describe("what a password manager can't do from here", () => {
     expect(saved.why).toContain("can't be changed from here");
     expect(source.values.get("r1")).toBe(SOURCE_PASSWORD);
     expect((await refusal(() => made(v, run, MADE_AGAIN, "FakePass"))).code).toBe("not_allowed");
+  });
+
+  test("one login it can't change (not_writable): the new password is kept in the Vault, the connection still writes", async () => {
+    const { v, source } = await setup();
+    source.items = [
+      {
+        ref: "r1",
+        kind: "login",
+        title: "Shop",
+        username: "agent@acme.example",
+        websites: [{ url: SITE, match: "site" }],
+      },
+    ];
+    source.values.set("r1", SOURCE_PASSWORD);
+    source.notWritable = ["r1"];
+    const connection = await connect(v);
+    const run = await runAskedBy(v, v.dev.id, v.carla.id);
+
+    // Not asked for by name: kept in the Vault, the answer says the login there keeps its old password.
+    const saved = await made(v, run);
+    expect(saved).toMatchObject({ outcome: "created", item: { place: { connectionId: null } } });
+    expect(saved.why).toContain("keeps its old password (it can't be changed from here)");
+    expect(saved.why).not.toContain("token can only read");
+    expect(await storedValue(v, saved.item.id)).toBe(MADE);
+    expect(source.values.get("r1")).toBe(SOURCE_PASSWORD);
+    // Unlike read_only, nothing is remembered about the connection: it still takes new logins.
+    expect((await connectionRow(v, connection.id)).config.readOnly).toBeUndefined();
+    expect((await listVaultPlaces(v.deps, run))[1]?.writes).toBe("yes");
+    const elsewhere = await saveMadePassword(
+      v.deps,
+      run,
+      { website: "https://other.acme.example", username: "a" },
+      MADE_AGAIN,
+    );
+    expect(elsewhere.item.place.connectionId).toBe(connection.id);
+    const stored = await everythingStored(v);
+    expect(stored).not.toContain(MADE);
+    expect(stored).not.toContain(SOURCE_TOKEN);
+  });
+
+  test("one login it can't change, in the place the person named: refused, the connection still writes", async () => {
+    const { v, source } = await setup();
+    source.items = [
+      {
+        ref: "r1",
+        kind: "login",
+        title: "Shop",
+        username: "agent@acme.example",
+        websites: [{ url: SITE, match: "site" }],
+      },
+    ];
+    source.values.set("r1", SOURCE_PASSWORD);
+    source.notWritable = ["r1"];
+    const connection = await connect(v);
+    const run = await runAskedBy(v, v.dev.id, v.carla.id);
+    const refused = await refusal(() => made(v, run, MADE, "FakePass"));
+    expect(refused.code).toBe("not_writable");
+    expect(refused.message).toContain('FakePass · "Agents" doesn\'t let this login be changed from here');
+    expect(refused.message).not.toContain(MADE);
+    expect(refused.message).not.toContain(SOURCE_TOKEN);
+    expect(source.values.get("r1")).toBe(SOURCE_PASSWORD);
+    expect((await connectionRow(v, connection.id)).config.readOnly).toBeUndefined();
+    expect((await listUsableVault(v.deps, run)).filter((i) => !i.place.connectionId)).toHaveLength(0);
   });
 
   test("a login people keep there changes only for who may change the team's; a failure says nothing secret", async () => {
