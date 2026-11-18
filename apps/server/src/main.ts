@@ -26,7 +26,7 @@ if (process.argv[2] === "setup") {
 if (process.argv[2] === "migrate") {
   const config = loadConfig();
   const database = createDatabase({ url: config.DATABASE_URL, poolMax: config.DATABASE_POOL_MAX });
-  await prepareDatabase(database, createLogger(config.LOG_LEVEL));
+  await prepareDatabase(database, createLogger(config.LOG_LEVEL, undefined, config.LOG_FORMAT));
   await database.close();
   process.exit(0);
 }
@@ -58,5 +58,5 @@ if (process.argv[2] === "telemetry") {
   process.exit(0);
 }
 
-// keefast as a Vault source (ADR 0190): a module, so the core stays as upstream ships it.
+// keefast as a Vault source (ADR 0195): a module, so the core stays as upstream ships it.
 await startServer({ edition: "selfhost", modules: [keefastVaultModule()] });

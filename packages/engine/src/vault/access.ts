@@ -132,7 +132,7 @@ export async function vaultPersonOfRun(db: Executor, run: VaultRun): Promise<Vau
 }
 
 /**
- * Whom a run asks a password manager for (`VaultSourceFor`, ADR 0190): the agent and the person `vaultPersonOfRun`
+ * Whom a run asks a password manager for (`VaultSourceFor`, ADR 0195): the agent and the person `vaultPersonOfRun`
  * found, by the names people see, and the run. Nobody behind the run: no person.
  */
 export async function vaultSourceFor(db: Executor, run: VaultRun, person: VaultRunPerson): Promise<VaultSourceFor> {

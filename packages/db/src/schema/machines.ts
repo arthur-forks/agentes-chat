@@ -35,6 +35,8 @@ export interface MachinePlanUsage {
   models?: Record<string, { at: string; until?: string; region?: true; off?: true; inactive?: true }>;
   /** The model that last answered with the account's key (`PlanUsage.answered`). */
   answered?: string;
+  /** Stuck at its limit: when the server last asked its computer to read it again (`recheckStuckPlans`). */
+  checkedAt?: string;
 }
 
 /**
@@ -53,6 +55,8 @@ export interface MachineExecutors {
   grok?: { version: string; models?: { id: string; label?: string }[] };
   /** Google's Antigravity CLI (protocol 44, ADR 0143), and the models it lists. */
   antigravity?: { version: string; models?: { id: string; label?: string }[] };
+  /** A CLI that is there and can't start (`--version` keeps failing), with its own error line; `git_missing`: see `CLI_GIT_MISSING`. */
+  broken?: Partial<Record<"claude" | "codex" | "cursor" | "opencode" | "grok" | "antigravity", string>>;
   /** `hello.browser` (ADR 0040): whether the agent browser can run there; absent = not reported. */
   browser?: {
     available: boolean;
@@ -232,6 +236,12 @@ export const machines = pgTable(
     audienceRoleIds: uuid().array().notNull().default(sql`'{}'::uuid[]`),
     /** An admin marked it the workspace's: it stays when its pairer leaves (an `owner` rule then reads as everyone). */
     belongsToWorkspace: boolean().notNull().default(false),
+    /**
+     * Spill-over: while an agent's own computer is full, a turn a person waits on may think here instead, on a
+     * sign-in the agent may use. `spill_own`: turns for whoever connected it; `spill_others`: anyone else's.
+     */
+    spillOwn: boolean().notNull().default(true),
+    spillOthers: boolean().notNull().default(false),
     /** Last known; trust it only with a recent `last_seen_at` (a replica may have died). */
     online: boolean().notNull().default(false),
     /** The server process holding its socket. */
@@ -242,6 +252,11 @@ export const machines = pgTable(
      * when something wants it. Its runner's next hello clears it.
      */
     standbyAt: timestamp({ withTimezone: true }),
+    /**
+     * In standby, when something first wanted it awake (`wantMachine`). People see it online only for a while after
+     * (`shownStandby`): one that never wakes shows its real state. Cleared with `standby_at`.
+     */
+    wakeWantedAt: timestamp({ withTimezone: true }),
     /**
      * The operator says the workspace's own computer's agents wait for their way out (`PUT …/egress-waiting`): where
      * its network sends them only through a proxy, none works now, so their connections are refused for a while. The
@@ -343,6 +358,16 @@ export const machineAccounts = pgTable(
      * login thinks for one agent.
      */
     shared: boolean().notNull().default(false),
+    /**
+     * Who it thinks for (ADR 0059 §3): `everyone` in the workspace (people's right hand and any agent), or only its
+     * `owner`'s. Only the person who connected it changes it, for every login of that account.
+     */
+    serves: text().notNull().default("everyone"),
+    /**
+     * Its place in the workspace's order of use (ADR 0041 §6): at a plan's limit a run goes on with the next account
+     * that serves its agent, lowest first; null after every numbered one, oldest first.
+     */
+    useOrder: integer(),
     /**
      * How it signs in (protocol 50): `cli_login`, `setup_token` or `api_key`. Set when its sign-in starts and from
      * what the runner reports, never cleared by a report that doesn't say; null: unknown.
@@ -583,6 +608,10 @@ export const machinePhones = pgTable(
     audienceUserIds: text().array().notNull().default(sql`'{}'::text[]`),
     audienceRoleIds: uuid().array().notNull().default(sql`'{}'::uuid[]`),
     lastSeenAt: timestamp({ withTimezone: true }),
+    /** Since when `state` and `reason` hold as they are: every report bumps `updated_at`, a change only this. */
+    stateSince: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    /** A setup step that stayed stuck since `state_since` was reported (once): cleared when the state or reason moves. */
+    stuckReportedAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp({ withTimezone: true }),

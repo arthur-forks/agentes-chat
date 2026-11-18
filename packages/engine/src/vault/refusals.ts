@@ -115,7 +115,7 @@ export const refuse = {
       "read_only",
       `This ${place.name} token can only read, so nothing was saved or changed in ${vaultPlaceName(place)}. Tell the person: someone who manages that connection creates a token that can also write there and reconnects it in Settings, Vault, Connections. Until then, new logins go in the Vault (\`save_in\`: "vault").`,
     ),
-  /** One item the connection may read but not change; other writes there still go, unlike `readOnly` (ADR 0190). */
+  /** One item the connection may read but not change; other writes there still go, unlike `readOnly` (ADR 0195). */
   notWritable: (place: VaultPlace) =>
     new VaultRefusal(
       "not_writable",

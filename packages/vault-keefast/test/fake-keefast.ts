@@ -1,5 +1,5 @@
 /**
- * A fake keefast Headless host speaking the Gateway API (`/gateway/v1/`, ADR 0190), as a `fetch`. Its refusals put
+ * A fake keefast Headless host speaking the Gateway API (`/gateway/v1/`, ADR 0195), as a `fetch`. Its refusals put
  * the token and the values it holds into keefast's own `message` on purpose, and its network failures carry them in
  * the thrown error: what comes out of the source must never show them.
  */

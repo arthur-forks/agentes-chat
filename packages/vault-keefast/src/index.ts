@@ -1,5 +1,5 @@
 /**
- * keefast as a Vault source, through a module (ADR 0190): `keefastVaultModule()` adds the `keefast` source to the
+ * keefast as a Vault source, through a module (ADR 0195): `keefastVaultModule()` adds the `keefast` source to the
  * Vault's sources (ADR 0144 §3) through `AgentesModule.adapters()`, merged by kind. The self-hosted server starts with
  * it (`apps/server/src/main.ts`).
  */

@@ -629,7 +629,7 @@ const sharedWords = async (db: Executor, run: VaultRun) =>
 
 /**
  * A write into a connection's source, as a refusal the agent can act on. A credential that may only read is remembered
- * as read-only; a write refused for one item alone (`not_writable`, ADR 0190) leaves the connection as it is.
+ * as read-only; a write refused for one item alone (`not_writable`, ADR 0195) leaves the connection as it is.
  */
 async function sourceWrite<T>(
   deps: VaultDeps,

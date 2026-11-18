@@ -1,5 +1,5 @@
 /**
- * keefast as a Vault source (ADR 0190), against a fake Headless host: the contract every source keeps (as
+ * keefast as a Vault source (ADR 0195), against a fake Headless host: the contract every source keeps (as
  * `packages/adapters/test/vault-sources.test.ts` runs it on the others), then what is keefast's own: each refusal's
  * code, `423` as `unreachable`, the writes' requests, `read_only` against `not_writable`, the kept list and `304`, and
  * which `fetch` a host goes through.

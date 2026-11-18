@@ -41,14 +41,14 @@ export interface FakeSource extends VaultSource {
     op: "connect" | "list" | "reveal" | "create" | "update";
     signal: AbortSignal | undefined;
     orgId: string | undefined;
-    /** Whom the engine said a `reveal` or a write is for (ADR 0190). */
+    /** Whom the engine said a `reveal` or a write is for (ADR 0195). */
     forWhom?: VaultSourceFor | undefined;
   }[];
   /** Writes are refused as a token that only reads would be (a source made with `writableSource`). */
   readOnly: boolean;
   /** Writes fail as a provider's own error would, with its secrets in the text. */
   writeBroken: boolean;
-  /** Refs whose change is refused for that login alone (`not_writable`, ADR 0190); other writes still go. */
+  /** Refs whose change is refused for that login alone (`not_writable`, ADR 0195); other writes still go. */
   notWritable: string[];
 }
 

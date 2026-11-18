@@ -1,5 +1,5 @@
 /**
- * keefast as a Vault source (ADR 0144, ADR 0190): a client of the Gateway API that `keefast-agent serve` offers a
+ * keefast as a Vault source (ADR 0144, ADR 0195): a client of the Gateway API that `keefast-agent serve` offers a
  * Gateway pairing, under `/gateway/v1/`. keefast maps its Entries to items itself, so this client stays thin: it
  * checks the token (`whoami`), lists metadata, resolves one value when asked, and keeps or changes a login in the
  * pairing's own subgroup.
@@ -9,9 +9,9 @@
  *   its text is never stored or shown, and neither is the token or a value.
  * - keefast's `locked` (423: the host waits for `keefast-agent unlock`) is `unreachable` here, not `locked`: the
  *   engine's `locked` means a wrong master password and stops syncing until a person reconnects, while `unreachable`
- *   is tried again by itself, which is what an unlock needs (ADR 0190).
+ *   is tried again by itself, which is what an unlock needs (ADR 0195).
  * - A change refused for one login outside the pairing's own subgroup is `not_writable`; a pairing that may not
- *   write at all is `read_only` (ADR 0190).
+ *   write at all is `read_only` (ADR 0195).
  * - `list` sends the ETag of the last list it read for that connection (`If-None-Match`) and, on `304`, returns that
  *   list again: the engine still gets every item, as a sync needs, and keefast reads nothing. The list is metadata
  *   only and kept in this process's memory, a few hundred connections at most, keyed by the URL and a hash of the
@@ -23,7 +23,7 @@
  * - Every call has a deadline (60 s, as the engine's own) and stops when the engine's signal aborts.
  * - A resolve and each write carry `for` with whom the engine asks for (`VaultSourceFor`): the agent and the person
  *   as `name (id)`, and the run's id, only the parts it knows, and no `for` when it knows none. keefast logs it as the
- *   gateway's unverified claim (`claimed_for`), capping each part and replacing control characters (ADR 0190).
+ *   gateway's unverified claim (`claimed_for`), capping each part and replacing control characters (ADR 0195).
  */
 import {
   OutboundAddressError,

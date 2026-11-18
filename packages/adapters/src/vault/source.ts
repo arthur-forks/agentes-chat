@@ -13,7 +13,7 @@
  * - Every failure is a `VaultSourceError` with a code. A provider's own message is never stored or shown: it may
  *   carry a token.
  * - A write a credential may not make is `read_only`, never `auth_failed`: the connection still reads. A write the
- *   credential may make elsewhere but not to this one item is `not_writable` (ADR 0190).
+ *   credential may make elsewhere but not to this one item is `not_writable` (ADR 0195).
  * - `connect` validates what the person typed and returns what to keep, split into `config` (shown on screen) and
  *   `secret` (sealed at rest by the engine, never returned to a client).
  */
@@ -94,7 +94,7 @@ export type VaultSourceErrorCode =
   | "read_only"
   /**
    * A write refused for this one item (it sits where the credential may read but not change), while other writes
-   * through the connection still go: unlike `read_only`, it says nothing about the credential (ADR 0190).
+   * through the connection still go: unlike `read_only`, it says nothing about the credential (ADR 0195).
    */
   | "not_writable";
 
@@ -124,7 +124,7 @@ export interface VaultSourceContext {
 }
 
 /**
- * Whom a value or a write is for, as the engine knows it (ADR 0190): the agent, the person behind its run (who asked,
+ * Whom a value or a write is for, as the engine knows it (ADR 0195): the agent, the person behind its run (who asked,
  * else the creator of the routine behind it; absent when nobody is), and the run. Names are the ones people see in
  * the workspace, each with its id. Never a secret and nothing anyone wrote in a conversation. A source may pass it
  * on to its own audit log as the caller's claim, or ignore it.
